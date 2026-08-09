@@ -1,0 +1,8 @@
+{
+    "id": "website",
+    "name": "Slipring Stok Eşleştirme",
+    "description": "Slipring Elektrik A.S. ERP-site stok eşleştirme aracı",
+    "url": "https://slip-ring.com",
+    "hostname": "xyz.runable.site",
+    "port": 8080
+}

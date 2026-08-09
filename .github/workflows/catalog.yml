@@ -1,0 +1,35 @@
+name: Katalog Tazele
+
+on:
+  schedule:
+    # Her pazartesi 04:00 UTC (TR 07:00)
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: poppler kur (pdftotext)
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - run: bun install --frozen-lockfile
+      - name: Katalogu tara
+        run: bun scripts/build-catalog.ts
+      - name: Değişiklikleri işle
+        run: |
+          if git diff --quiet -- packages/web/public/catalog.json; then
+            echo "değişiklik yok"
+            exit 0
+          fi
+          git config user.name "catalog-bot"
+          git config user.email "catalog-bot@users.noreply.github.com"
+          git add packages/web/public/catalog.json
+          git commit -m "katalog: otomatik tazeleme"
+          git push
