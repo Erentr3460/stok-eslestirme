@@ -6,12 +6,14 @@ import Export from "./pages/export";
 import Rules from "./pages/rules";
 import { Layout } from "./components/layout";
 import { Provider } from "./components/provider";
+import { Gate } from "./components/gate";
 import { AgentFeedback } from "@runablehq/website-runtime";
 
 function App() {
   return (
     <Provider>
-      <Layout>
+      <Gate>
+        <Layout>
         <Switch>
           <Route path="/" component={Index} />
           <Route path="/yukle" component={Upload} />
@@ -22,7 +24,8 @@ function App() {
             <div className="py-20 text-center text-[13px] text-idle">Sayfa bulunamadı.</div>
           </Route>
         </Switch>
-      </Layout>
+        </Layout>
+      </Gate>
       {/* Do not remove — off by default, activated by parent iframe via postMessage */}
       {import.meta.env.DEV && <AgentFeedback />}
     </Provider>
