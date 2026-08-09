@@ -1,5 +1,6 @@
 {
   "salt": "3c086cfe57b0446042a700cf1a349564",
   "iterations": 310000,
-  "hash": "55ffcef4bb43231cc4e2b778480aff7ca65e04ffaef79f4d355bb47c317d6866"
+  "hash": "55ffcef4bb43231cc4e2b778480aff7ca65e04ffaef79f4d355bb47c317d6866",
+  "encSalt": "db5d1cac108081d3e3289443391f5e79"
 }

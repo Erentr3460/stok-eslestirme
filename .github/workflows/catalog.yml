@@ -22,14 +22,18 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Katalogu tara
         run: bun scripts/build-catalog.ts
+      - name: Katalogu şifrele
+        env:
+          PANEL_PASSWORD: ${{ secrets.PANEL_PASSWORD }}
+        run: bun scripts/encrypt-catalog.ts
       - name: Değişiklikleri işle
         run: |
-          if git diff --quiet -- packages/web/public/catalog.json; then
+          if git diff --quiet -- packages/web/public/catalog.enc.json; then
             echo "değişiklik yok"
             exit 0
           fi
           git config user.name "catalog-bot"
           git config user.email "catalog-bot@users.noreply.github.com"
-          git add packages/web/public/catalog.json
+          git add packages/web/public/catalog.enc.json
           git commit -m "katalog: otomatik tazeleme"
           git push

@@ -76,6 +76,10 @@ packages/mobile/scripts/*
 # statik yayın scriptleri (yukarıdaki scripts/ kuralının istisnası)
 !scripts/build-catalog.ts
 !scripts/build-pages.sh
+!scripts/encrypt-catalog.ts
+
+# düz metin katalog — asla yayınlanmaz, sadece şifrelenmiş hali commit edilir
+packages/web/public/catalog.json
 
 # runable çalışma dosyaları
 .runable

@@ -12,6 +12,8 @@ bun run build:web
 
 # Analiz/çalışma zamanı kalıntılarını temizle
 rm -f "$DIST/runable.js"
+# Düz metin katalog asla yayınlanmaz — sadece şifrelenmiş catalog.enc.json gider
+rm -f "$DIST/catalog.json"
 if [ -f "$DIST/index.html" ]; then
   perl -0pi -e 's{<script[^>]*runable\.js[^>]*>\s*</script>}{}gs' "$DIST/index.html"
 fi
@@ -23,6 +25,11 @@ touch "$DIST/.nojekyll"
 # Özel alan adı
 if [ -n "${PAGES_DOMAIN:-}" ]; then
   echo "$PAGES_DOMAIN" > "$DIST/CNAME"
+fi
+
+if [ ! -f "$DIST/catalog.enc.json" ]; then
+  echo "HATA: catalog.enc.json yok — 'bun scripts/encrypt-catalog.ts' çalıştır." >&2
+  exit 1
 fi
 
 echo "hazır: $DIST"

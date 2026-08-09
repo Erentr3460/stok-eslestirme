@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { KeyRound, Loader2 } from "lucide-react";
-import { isUnlocked, passwordEnabled, unlock, verify } from "../lib/local/auth";
+import { deriveCatalogKey, isUnlocked, passwordEnabled, unlock, verify } from "../lib/local/auth";
 
 interface GateProps {
   children: React.ReactNode;
@@ -25,11 +25,12 @@ export function Gate({ children }: GateProps) {
     setBusy(true);
     setErr(false);
     const ok = await verify(value);
-    setBusy(false);
     if (ok) {
+      await deriveCatalogKey(value);
       unlock();
       setOpen(true);
     } else {
+      setBusy(false);
       setErr(true);
       setValue("");
     }
