@@ -1,39 +1,71 @@
-name: Katalog Tazele
+name: Katalogu Tazele ve Yayınla
+
+# slip-ring.com'u tarar, stok/fiyatları günceller, katalogu şifreler,
+# siteyi yeniden derleyip main dalına (GitHub Pages) yayınlar.
+#
+# Elle çalıştırmak: Actions sekmesi → "Katalogu Tazele ve Yayınla" → Run workflow
 
 on:
   schedule:
-    # Her pazartesi 04:00 UTC (TR 07:00)
-    - cron: "0 4 * * 1"
+    # Her gün 04:00 UTC (TR 07:00)
+    - cron: "0 4 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: katalog
+  cancel-in-progress: false
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: source
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
-      - name: poppler kur (pdftotext)
+
+      - name: poppler kur (datasheet metni için)
         run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
       - run: bun install --frozen-lockfile
-      - name: Katalogu tara
+
+      - name: Siteyi tara
         run: bun scripts/build-catalog.ts
+
       - name: Katalogu şifrele
         env:
           PANEL_PASSWORD: ${{ secrets.PANEL_PASSWORD }}
         run: bun scripts/encrypt-catalog.ts
-      - name: Değişiklikleri işle
+
+      - name: Şifreli katalogu source dalına işle
         run: |
-          if git diff --quiet -- packages/web/public/catalog.enc.json; then
-            echo "değişiklik yok"
-            exit 0
-          fi
           git config user.name "catalog-bot"
           git config user.email "catalog-bot@users.noreply.github.com"
-          git add packages/web/public/catalog.enc.json
-          git commit -m "katalog: otomatik tazeleme"
-          git push
+          if git diff --quiet -- packages/web/public/catalog.enc.json; then
+            echo "katalogda değişiklik yok"
+          else
+            git add packages/web/public/catalog.enc.json
+            git commit -m "katalog: otomatik tazeleme"
+            git push origin HEAD:source
+          fi
+
+      - name: Siteyi derle
+        env:
+          PAGES_DOMAIN: stok.erencetin.tr
+        run: ./scripts/build-pages.sh
+
+      - name: main dalına yayınla
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./packages/web/dist
+          publish_branch: main
+          cname: stok.erencetin.tr
+          enable_jekyll: false
+          commit_message: "yayın: katalog tazelendi"

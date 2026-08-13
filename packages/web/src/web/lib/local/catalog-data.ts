@@ -60,9 +60,15 @@ async function decryptSnapshot(file: EncryptedFile): Promise<Snapshot> {
 }
 
 async function seedOnce(snap: Snapshot) {
+  // Katalogla gelen alias'lar her yüklemede birleştirilir: yeni ürün eşleşmeleri
+  // mevcut tarayıcılara da ulaşsın diye. Anahtar codeNorm olduğu için kendi
+  // onayladığın eşleşmeler silinmez, sadece eksik olanlar eklenir.
+  await putMany(STORES.aliases, snap.seed.aliases);
+
+  // Ignore listesi ve prefix kuralları yalnızca ilk açılışta kurulur —
+  // sonradan yaptığın açma/kapama tercihleri korunsun.
   const done = await get<{ key: string; value: string }>(STORES.meta, "seeded");
   if (done) return;
-  await putMany(STORES.aliases, snap.seed.aliases);
   await putMany(STORES.ignored, snap.seed.ignored);
   await putMany(
     STORES.prefixes,
