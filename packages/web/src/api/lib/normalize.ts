@@ -39,6 +39,37 @@ export function toInt(input: unknown): number | null {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+/** Bir metnin 2-gram sayaç haritası — benzerlik hesabında yeniden kullanılır. */
+export function gramMap(s: string): Map<string, number> {
+  const m = new Map<string, number>();
+  for (let i = 0; i < s.length - 1; i++) {
+    const g = s.slice(i, i + 2);
+    m.set(g, (m.get(g) ?? 0) + 1);
+  }
+  return m;
+}
+
+/**
+ * Önceden hazırlanmış gram haritalarıyla Dice benzerliği.
+ * `similarity` ile aynı sonucu verir ama haritaları her karşılaştırmada
+ * yeniden kurmadığı için binlerce satırda kat kat hızlıdır.
+ */
+export function diceFromGrams(
+  a: Map<string, number>,
+  aLen: number,
+  b: Map<string, number>,
+  bLen: number,
+): number {
+  if (aLen < 2 || bLen < 2) return 0;
+  const [small, big] = a.size <= b.size ? [a, b] : [b, a];
+  let hits = 0;
+  for (const [g, c] of small) {
+    const d = big.get(g);
+    if (d) hits += c < d ? c : d;
+  }
+  return (2 * hits) / (aLen - 1 + bLen - 1);
+}
+
 /** İki normalize kod arasında 0-1 arası benzerlik (Dice, 2-gram). */
 export function similarity(a: string, b: string): number {
   if (!a || !b) return 0;

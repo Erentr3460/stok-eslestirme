@@ -1,14 +1,22 @@
-import { Database, FileSpreadsheet, GitCompareArrows, Download, SlidersHorizontal } from "lucide-react";
+import {
+  Database,
+  Download,
+  FileSpreadsheet,
+  GitCompareArrows,
+  SlidersHorizontal,
+  Zap,
+} from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useCatalogStatus } from "../queries/catalog";
 import { useBatch } from "../hooks/use-batch";
 
 const NAV = [
-  { step: 1, to: "/", label: "Katalog", icon: Database },
-  { step: 2, to: "/yukle", label: "Excel Yükle", icon: FileSpreadsheet },
-  { step: 3, to: "/eslestir", label: "Eşleştir", icon: GitCompareArrows },
-  { step: 4, to: "/aktar", label: "Dışa Aktar", icon: Download },
-  { step: 0, to: "/kurallar", label: "Kurallar", icon: SlidersHorizontal },
+  { to: "/", label: "Hızlı Güncelleme", icon: Zap, group: "main" },
+  { to: "/yukle", label: "Excel Yükle", icon: FileSpreadsheet, group: "adv" },
+  { to: "/eslestir", label: "Eşleştirmeyi Gözden Geçir", icon: GitCompareArrows, group: "adv" },
+  { to: "/aktar", label: "Dosya Oluştur", icon: Download, group: "adv" },
+  { to: "/katalog", label: "Site Katalogu", icon: Database, group: "adv" },
+  { to: "/kurallar", label: "Kurallar", icon: SlidersHorizontal, group: "adv" },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -29,26 +37,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 px-2 py-3">
           {NAV.map((n) => {
+            const first = n.group === "adv" && NAV.findIndex((x) => x.group === "adv") === NAV.indexOf(n);
             const active = path === n.to;
             const Icon = n.icon;
             return (
+              <div key={n.to}>
+                {first && (
+                  <p className="mb-1 mt-3 px-3 text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                    Gelişmiş
+                  </p>
+                )}
               <Link
-                key={n.to}
                 to={n.to}
                 className={`mb-0.5 flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition ${
                   active ? "bg-brand text-navy" : "text-white/70 hover:bg-white/8 hover:text-white"
                 }`}
               >
                 <Icon size={15} strokeWidth={2.2} />
-                <span className="flex-1">{n.label}</span>
-                {n.step > 0 && (
-                  <span
-                    className={`mono text-[10px] ${active ? "text-navy/60" : "text-white/35"}`}
-                  >
-                    {n.step}
-                  </span>
-                )}
+                <span className="flex-1 leading-tight">{n.label}</span>
               </Link>
+              </div>
             );
           })}
         </nav>

@@ -1,4 +1,4 @@
-import { norm, similarity } from "./normalize";
+import { diceFromGrams, gramMap, norm } from "./normalize";
 
 export interface CatalogProduct {
   slug: string;
@@ -89,7 +89,18 @@ function push(map: Map<string, CatalogProduct[]>, key: string, p: CatalogProduct
   } else map.set(key, [p]);
 }
 
-export function runMatch(input: MatchInput): MatchResult {
+/** Zayıf sinyal taramasında kullanılan, ürün başına bir kez hazırlanan veri. */
+interface Prepared {
+  p: CatalogProduct;
+  sku: string;
+  nm: string;
+  skuG: Map<string, number>;
+  nmG: Map<string, number>;
+}
+
+export type MatchProgress = (done: number, total: number) => void;
+
+export function runMatch(input: MatchInput, onProgress?: MatchProgress): MatchResult {
   const { products, rows } = input;
   const aliasMap = new Map(input.aliases.map((a) => [a.codeNorm, a.slug]));
   const bySlug = new Map(products.map((p) => [p.slug, p]));
@@ -114,9 +125,19 @@ export function runMatch(input: MatchInput): MatchResult {
 
   const withDs = products.filter((p) => p.dsText && p.dsText.length > 20);
 
+  // Benzerlik hesabı için gram haritaları ürün başına bir kez kurulur.
+  const prep: Prepared[] = products.map((p) => {
+    const sku = p.skuNorm ?? "";
+    const nm = p.nameNorm ?? "";
+    return { p, sku, nm, skuG: gramMap(sku), nmG: gramMap(nm) };
+  });
+
   const out: MatchRow[] = [];
+  let done = 0;
 
   for (const row of rows) {
+    done++;
+    if (onProgress && done % 25 === 0) onProgress(done, rows.length);
     const cands: { code: string; raw: string }[] = [];
     const seen = new Set<string>();
     for (const raw of [row.code, row.code2, row.name]) {
@@ -179,21 +200,27 @@ export function runMatch(input: MatchInput): MatchResult {
     if (best < AUTO_THRESHOLD) {
       for (const c of cands) {
         if (c.code.length < 5) continue;
-        for (const p of products) {
-          const sku = p.skuNorm ?? "";
-          const nm = p.nameNorm ?? "";
+        const cLen = c.code.length;
+        const cg = gramMap(c.code);
+        for (const pr of prep) {
+          const { sku, nm } = pr;
           if (sku.length >= 5 && (sku.includes(c.code) || c.code.includes(sku))) {
-            const ratio = Math.min(sku.length, c.code.length) / Math.max(sku.length, c.code.length);
-            add(p, Math.round(55 + ratio * 25), "contains", c.raw);
-          } else if (c.code.length >= 6 && nm.length >= 6 && nm.includes(c.code)) {
-            add(p, 70, "contains", c.raw);
+            const ratio = Math.min(sku.length, cLen) / Math.max(sku.length, cLen);
+            add(pr.p, Math.round(55 + ratio * 25), "contains", c.raw);
+          } else if (cLen >= 6 && nm.length >= 6 && nm.includes(c.code)) {
+            add(pr.p, 70, "contains", c.raw);
           } else if (sku.length >= 5) {
-            const sim = Math.max(similarity(sku, c.code), similarity(nm, c.code));
-            if (sim >= 0.5) add(p, Math.round(sim * 78), "fuzzy", c.raw);
+            const sim = Math.max(
+              diceFromGrams(pr.skuG, sku.length, cg, cLen),
+              diceFromGrams(pr.nmG, nm.length, cg, cLen),
+            );
+            if (sim >= 0.5) add(pr.p, Math.round(sim * 78), "fuzzy", c.raw);
           }
-          // Datasheet metninde kısmi geçiş — kesin eşleşme yokken öneri olarak sunulur
-          if (c.code.length >= 6 && (p.dsText ?? "").includes(c.code)) {
-            add(p, 84, "datasheet", c.raw);
+        }
+        // Datasheet metninde kısmi geçiş — kesin eşleşme yokken öneri olarak sunulur
+        if (cLen >= 6) {
+          for (const p of withDs) {
+            if ((p.dsText ?? "").includes(c.code)) add(p, 84, "datasheet", c.raw);
           }
         }
       }

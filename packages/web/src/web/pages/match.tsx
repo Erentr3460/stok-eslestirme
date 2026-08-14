@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { ExternalLink, Loader2, Search } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { PageHead } from "../components/layout";
 import { MatchRow, type Row } from "../components/match-row";
 import { Btn, Empty, Stat } from "../components/ui/bits";
 import { useBatch } from "../hooks/use-batch";
+import { useMatchProgress } from "../hooks/use-match-progress";
 import { useOverrides } from "../hooks/use-overrides";
 import {
   useConfirmMatch,
@@ -16,17 +17,28 @@ import {
 
 type Filter = "matched" | "review" | "missing" | "ignored" | "idle";
 
+/** Tek seferde basılan satır sayısı — 1000+ satırı DOM'a birden yazmak tarayıcıyı kilitliyor. */
+const PAGE = 50;
+
 export default function MatchPage() {
   const [, navigate] = useLocation();
   const { batchId } = useBatch();
   const run = useMatchRun(batchId);
-  const { overrides, setRow, clear, count } = useOverrides(batchId);
+  const { overrides, setRow, setMany, clear, count } = useOverrides(batchId);
   const confirm = useConfirmMatch();
   const unconfirm = useUnconfirmMatch();
   const ignore = useIgnoreCode();
   const unignore = useUnignoreCode();
   const [filter, setFilter] = useState<Filter>("review");
-  const [q, setQ] = useState("");
+  const [qInput, setQInput] = useState("");
+  const q = useDeferredValue(qInput);
+  const [limit, setLimit] = useState(PAGE);
+  const progress = useMatchProgress();
+
+  // Filtre ya da arama değişince listeyi baştan göster.
+  useEffect(() => {
+    setLimit(PAGE);
+  }, [filter, q]);
 
   const busy = confirm.isPending || unconfirm.isPending || ignore.isPending || unignore.isPending;
   const s = run.data?.summary;
@@ -56,11 +68,13 @@ export default function MatchPage() {
   );
 
   const acceptAllSuggestions = useCallback(() => {
-    for (const r of suggestable) {
-      const top = r.candidates[0];
-      if (top) setRow(r.i, { slug: top.slug, stock: null });
-    }
-  }, [suggestable, setRow]);
+    setMany(
+      suggestable.flatMap((r) => {
+        const top = r.candidates[0];
+        return top ? [{ rowIndex: r.i, value: { slug: top.slug, stock: null } }] : [];
+      }),
+    );
+  }, [suggestable, setMany]);
 
   const idleRows = useMemo(() => {
     if (!run.data || filter !== "idle") return [];
@@ -104,9 +118,24 @@ export default function MatchPage() {
         }
       />
 
-      {run.isLoading && (
-        <div className="card flex items-center justify-center gap-2 py-16 text-[13px] text-idle">
-          <Loader2 size={16} className="animate-spin" /> {run.data ? "Yenileniyor" : "Eşleştiriliyor"}…
+      {(run.isFetching || progress.running) && (
+        <div className="card mb-4 px-4 py-3">
+          <div className="flex items-center gap-2 text-[13px]">
+            <Loader2 size={15} className="animate-spin text-brand-dark" />
+            <span className="font-semibold">Eşleştiriliyor</span>
+            <span className="mono ml-auto text-[12px] text-idle">
+              {progress.total > 0 ? `${progress.done}/${progress.total} satır · %${progress.pct}` : "hazırlanıyor…"}
+            </span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line">
+            <div
+              className="h-full rounded-full bg-brand transition-all"
+              style={{ width: `${Math.max(4, progress.pct)}%` }}
+            />
+          </div>
+          <p className="mt-2 text-[11.5px] text-idle">
+            Hesaplama arka planda çalışıyor — bu sırada ekranı kullanmaya devam edebilirsin.
+          </p>
         </div>
       )}
 
@@ -165,8 +194,8 @@ export default function MatchPage() {
               <Search size={14} className="text-idle" />
               <input
                 aria-label="Satırlarda ara"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
+                value={qInput}
+                onChange={(e) => setQInput(e.target.value)}
                 placeholder="Kod veya ürün adı ara…"
                 className="mono flex-1 bg-transparent py-1 text-[12.5px] outline-none placeholder:font-sans placeholder:text-idle"
               />
@@ -193,7 +222,7 @@ export default function MatchPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {idleRows.map((p) => (
+                    {idleRows.slice(0, limit).map((p) => (
                       <tr key={p.slug} className="border-t border-line hover:bg-brand-soft/50">
                         <td className="mono whitespace-nowrap px-3 py-2 font-semibold">
                           {p.sku ?? "—"}
@@ -221,6 +250,13 @@ export default function MatchPage() {
                     ))}
                   </tbody>
                 </table>
+                {idleRows.length > limit && (
+                  <div className="border-t border-line px-3 py-3 text-center">
+                    <Btn onClick={() => setLimit((n) => n + 250)}>
+                      Daha fazla göster · {limit} / {idleRows.length}
+                    </Btn>
+                  </div>
+                )}
                 {idleRows.length === 0 && (
                   <p className="py-10 text-center text-[12.5px] text-idle">
                     Sitedeki her ürünün ERP listesinde karşılığı var.
@@ -241,7 +277,7 @@ export default function MatchPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => (
+                    {rows.slice(0, limit).map((r) => (
                       <MatchRow
                         key={r.i}
                         row={r}
@@ -258,6 +294,13 @@ export default function MatchPage() {
                     ))}
                   </tbody>
                 </table>
+                {rows.length > limit && (
+                  <div className="border-t border-line px-3 py-3 text-center">
+                    <Btn onClick={() => setLimit((n) => n + 250)}>
+                      Daha fazla göster · {limit} / {rows.length}
+                    </Btn>
+                  </div>
+                )}
                 {rows.length === 0 && (
                   <p className="py-10 text-center text-[12.5px] text-idle">
                     {filter === "review"

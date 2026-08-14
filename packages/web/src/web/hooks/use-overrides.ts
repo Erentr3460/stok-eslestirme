@@ -54,7 +54,18 @@ export function useOverrides(batchId: number | null) {
     [batchId, write],
   );
 
+  /** Toplu yazma — yüzlerce satırı tek seferde günceller (tek render, tek localStorage yazımı). */
+  const setMany = useCallback(
+    (entries: { rowIndex: number; value: Override }[]) => {
+      if (entries.length === 0) return;
+      const next = { ...read(batchId) };
+      for (const e of entries) next[String(e.rowIndex)] = e.value;
+      write(next);
+    },
+    [batchId, write],
+  );
+
   const clear = useCallback(() => write({}), [write]);
 
-  return { overrides, setRow, clear, count: Object.keys(overrides).length };
+  return { overrides, setRow, setMany, clear, count: Object.keys(overrides).length };
 }

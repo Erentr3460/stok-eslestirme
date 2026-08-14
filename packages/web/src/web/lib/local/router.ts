@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
-import { type CatalogProduct, type ErpRow, runMatch } from "../../../api/lib/match";
+import type { CatalogProduct, ErpRow, MatchResult } from "../../../api/lib/match";
+import { matchOffThread } from "./match-client";
 import { detectMapping, type Mapping } from "../../../api/lib/mapping";
 import { norm, tidy, toInt } from "../../../api/lib/normalize";
 import { loadSnapshot, type SnapshotProduct } from "./catalog-data";
@@ -50,6 +51,15 @@ async function requireBatch(id: number): Promise<BatchRecord & { id: number }> {
   return b;
 }
 
+/** Kısa ömürlü sonuç önbelleği: aynı girdide (ör. eşleştir → dışa aktar) yeniden taramayı önler. */
+let lastRun: { key: string; result: MatchResult } | null = null;
+
+function cheapHash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return h.toString(36);
+}
+
 async function loadContext(batchId: number) {
   const batch = await requireBatch(batchId);
   const snap = await loadSnapshot();
@@ -65,17 +75,30 @@ async function loadContext(batchId: number) {
   const ignored = await all<IgnoredRecord>(STORES.ignored);
   const prefixes = await all<PrefixRecord>(STORES.prefixes);
 
-  return {
-    batch,
+  const input = {
     products,
-    result: runMatch({
-      products,
-      rows,
-      aliases: aliases.map((a) => ({ codeNorm: a.codeNorm, slug: a.slug })),
-      prefixes: prefixes.filter((p) => p.enabled).map((p) => p.prefix),
-      ignored: ignored.map((i) => i.codeNorm),
-    }),
+    rows,
+    aliases: aliases.map((a) => ({ codeNorm: a.codeNorm, slug: a.slug })),
+    prefixes: prefixes.filter((p) => p.enabled).map((p) => p.prefix),
+    ignored: ignored.map((i) => i.codeNorm),
   };
+
+  const key = [
+    batchId,
+    rows.length,
+    snap.syncedAt,
+    products.length,
+    cheapHash(input.aliases.map((a) => `${a.codeNorm}>${a.slug}`).join("|")),
+    cheapHash(input.ignored.join("|")),
+    input.prefixes.join(","),
+    cheapHash(JSON.stringify(batch.mapping)),
+  ].join("~");
+
+  if (lastRun && lastRun.key === key) return { batch, products, result: lastRun.result };
+
+  const result = await matchOffThread(input);
+  lastRun = { key, result };
+  return { batch, products, result };
 }
 
 export const localRouter = {

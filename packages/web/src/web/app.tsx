@@ -1,4 +1,5 @@
 import { Route, Switch } from "wouter";
+import Quick from "./pages/quick";
 import Index from "./pages/index";
 import Upload from "./pages/upload";
 import Match from "./pages/match";
@@ -15,7 +16,8 @@ function App() {
       <Gate>
         <Layout>
         <Switch>
-          <Route path="/" component={Index} />
+          <Route path="/" component={Quick} />
+          <Route path="/katalog" component={Index} />
           <Route path="/yukle" component={Upload} />
           <Route path="/eslestir" component={Match} />
           <Route path="/aktar" component={Export} />
