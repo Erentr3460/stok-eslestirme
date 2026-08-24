@@ -14,7 +14,7 @@ import { useBatch } from "../hooks/use-batch";
 import { useMatchProgress } from "../hooks/use-match-progress";
 import { useOverrides } from "../hooks/use-overrides";
 import { useCatalogStatus, useSyncCatalog } from "../queries/catalog";
-import { useExport, useMatchRun } from "../queries/matching";
+import { useExport, useExportMissing, useMatchRun } from "../queries/matching";
 import { useCreateUpload, useUpload } from "../queries/uploads";
 
 function toBase64(file: File): Promise<string> {
@@ -89,6 +89,7 @@ export default function QuickPage() {
   const run = useMatchRun(batchId);
   const { overrides } = useOverrides(batchId);
   const exp = useExport();
+  const expMissing = useExportMissing();
   const status = useCatalogStatus();
   const syncCatalog = useSyncCatalog();
   const progress = useMatchProgress();
@@ -96,6 +97,7 @@ export default function QuickPage() {
   const [drag, setDrag] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<{ rowCount: number; filename: string } | null>(null);
+  const [missing, setMissing] = useState<{ missingCount: number; reviewCount: number } | null>(null);
 
   const mapping = active.data?.mapping;
   const columnsOk = Boolean(mapping?.code && mapping?.stock);
@@ -120,6 +122,13 @@ export default function QuickPage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Dosya işlenemedi");
     }
+  }
+
+  async function generateMissing() {
+    if (batchId === null) return;
+    const res = await expMissing.mutateAsync({ batchId });
+    setMissing({ missingCount: res.missingCount, reviewCount: res.reviewCount });
+    download(`${res.filename}.xlsx`, b64ToBlob(res.xlsxBase64));
   }
 
   async function generate() {
@@ -331,6 +340,58 @@ export default function QuickPage() {
                   Hiç satır çıkmadı — ERP stokları sitedekiyle birebir aynı görünüyor.
                 </p>
               )}
+            </div>
+          )}
+        </StepCard>
+        <StepCard
+          n={4}
+          title="Sitede olmayan ürünleri indir"
+          desc="ERP listende olup slip-ring.com'da bulunmayan ürünler. Bu dosyayı açıp siteye yeni ürün olarak ekleyebilirsin."
+          state={s ? "active" : "todo"}
+        >
+          {s ? (
+            <>
+              <p className="mb-3 text-[12.5px] leading-relaxed text-idle">
+                <span className="mono font-bold text-ink">{s.missing}</span> ürünün sitede hiç
+                karşılığı yok
+                {s.review > 0 && (
+                  <>
+                    {" · "}
+                    <span className="mono font-bold text-ink">{s.review}</span> tanesinde de emin
+                    olamadım (dosyada ayrı sayfada, sitedeki en benzer ürünle birlikte)
+                  </>
+                )}
+                .
+              </p>
+              <Btn
+                loading={expMissing.isPending}
+                onClick={() => void generateMissing()}
+                className="px-4 py-2 text-[13.5px]"
+              >
+                <Download size={15} />
+                Eksik Ürün Listesini İndir
+              </Btn>
+            </>
+          ) : (
+            <p className="text-[12.5px] text-idle">Önce dosyayı yükle.</p>
+          )}
+
+          {expMissing.error && (
+            <div className="mt-3 rounded-md border border-miss/30 bg-miss-soft px-3 py-2 text-[12.5px] text-miss">
+              {expMissing.error.message}
+            </div>
+          )}
+
+          {missing && (
+            <div className="rise mt-3 rounded-md border border-ok/40 bg-ok-soft px-3 py-2.5">
+              <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ok">
+                <CheckCircle2 size={14} /> İndirildi
+              </p>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-idle">
+                <b>Sitede Yok</b> sayfası: {missing.missingCount} ürün — siteye eklenecek olanlar.{" "}
+                <b>Emin Olunamayan</b> sayfası: {missing.reviewCount} ürün — eklemeden önce
+                "Sitedeki Benzer Ürün" kolonuna bak, bazıları aslında sitede kayıtlı olabilir.
+              </p>
             </div>
           )}
         </StepCard>

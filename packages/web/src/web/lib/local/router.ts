@@ -300,6 +300,74 @@ export const localRouter = {
       return { ok: true as const };
     },
 
+    /**
+     * ERP listesinde olup sitede karşılığı bulunmayan satırlar — siteye yeni ürün
+     * olarak eklemek için. 2 sayfa: kesin bulunamayanlar + emin olunamayanlar
+     * (bunlarda en yakın site ürünü de yazılır, aslında aynı ürün olabilir).
+     */
+    async exportMissing(input: { batchId: number }) {
+      const { result, batch } = await loadContext(input.batchId);
+
+      const seen = new Set<string>();
+      const missing: Record<string, string | number>[] = [];
+      for (const r of result.rows) {
+        if (r.status !== "missing") continue;
+        const key = norm(r.code || r.code2 || r.name);
+        if (key && seen.has(key)) continue;
+        if (key) seen.add(key);
+        missing.push({
+          "ERP Kodu": r.code,
+          "Yedek Kod": r.code2,
+          "Ürün Adı": r.name,
+          "ERP Stok": r.stock ?? 0,
+          "Excel Satırı": r.i + 2,
+        });
+      }
+
+      const review: Record<string, string | number>[] = [];
+      for (const r of result.rows) {
+        if (r.status !== "review") continue;
+        const top = r.candidates[0];
+        review.push({
+          "ERP Kodu": r.code,
+          "Yedek Kod": r.code2,
+          "Ürün Adı": r.name,
+          "ERP Stok": r.stock ?? 0,
+          "Sitedeki Benzer Ürün": top?.name ?? "",
+          "Benzer SKU": top?.sku ?? "",
+          "Benzerlik %": top?.score ?? "",
+          "Excel Satırı": r.i + 2,
+        });
+      }
+
+      const wb = XLSX.utils.book_new();
+      const wsMissing = XLSX.utils.json_to_sheet(missing);
+      wsMissing["!cols"] = [{ wch: 30 }, { wch: 26 }, { wch: 55 }, { wch: 10 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, wsMissing, "Sitede Yok");
+
+      const wsReview = XLSX.utils.json_to_sheet(review);
+      wsReview["!cols"] = [
+        { wch: 30 },
+        { wch: 26 },
+        { wch: 55 },
+        { wch: 10 },
+        { wch: 48 },
+        { wch: 26 },
+        { wch: 12 },
+        { wch: 12 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsReview, "Emin Olunamayan");
+
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+      const safe = batch.filename.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "_");
+      return {
+        missingCount: missing.length,
+        reviewCount: review.length,
+        xlsxBase64: XLSX.write(wb, { type: "base64", bookType: "xlsx" }) as string,
+        filename: `sitede-olmayan-urunler_${safe}_${stamp}`,
+      };
+    },
+
     async exportFile(input: {
       batchId: number;
       overrides: Record<string, { slug: string | null; stock: number | null; skip?: boolean }>;

@@ -151,3 +151,10 @@ export function useExport() {
     mutationFn: (opts: ExportOptions) => client.matching.exportFile(opts),
   });
 }
+
+/** Sitede karşılığı olmayan ERP ürünlerinin listesi — siteye yeni ürün eklemek için. */
+export function useExportMissing() {
+  return useMutation({
+    mutationFn: (input: { batchId: number }) => client.matching.exportMissing(input),
+  });
+}
