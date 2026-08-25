@@ -306,22 +306,47 @@ export const localRouter = {
      * (bunlarda en yakın site ürünü de yazılır, aslında aynı ürün olabilir).
      */
     async exportMissing(input: { batchId: number }) {
-      const { result, batch } = await loadContext(input.batchId);
+      const { result, batch, products } = await loadContext(input.batchId);
+
+      const urlBySlug = new Map(products.map((p) => [p.slug, p.url]));
+      let origin = "https://www.slip-ring.com";
+      const sample = products.find((p) => p.url)?.url;
+      if (sample) {
+        try {
+          origin = new URL(sample).origin;
+        } catch {
+          /* varsayılan kalsın */
+        }
+      }
+      const searchUrl = (q: string) =>
+        q ? `${origin}/?s=${encodeURIComponent(q)}&post_type=product` : "";
+
+      /** Aynı ERP kodu Excel'de kaç kez geçiyor. */
+      const freq = new Map<string, number>();
+      for (const r of result.rows) {
+        const key = norm(r.code || r.code2 || r.name);
+        if (key) freq.set(key, (freq.get(key) ?? 0) + 1);
+      }
 
       const seen = new Set<string>();
-      const missing: Record<string, string | number>[] = [];
+      const inStock: Record<string, string | number>[] = [];
+      const zeroStock: Record<string, string | number>[] = [];
       for (const r of result.rows) {
         if (r.status !== "missing") continue;
         const key = norm(r.code || r.code2 || r.name);
         if (key && seen.has(key)) continue;
         if (key) seen.add(key);
-        missing.push({
+        const row = {
           "ERP Kodu": r.code,
           "Yedek Kod": r.code2,
           "Ürün Adı": r.name,
           "ERP Stok": r.stock ?? 0,
+          "Excel'de Tekrar": key ? (freq.get(key) ?? 1) : 1,
           "Excel Satırı": r.i + 2,
-        });
+          "Sitede Ara": searchUrl(r.code || r.code2 || r.name),
+        };
+        if ((r.stock ?? 0) > 0) inStock.push(row);
+        else zeroStock.push(row);
       }
 
       const review: Record<string, string | number>[] = [];
@@ -336,14 +361,46 @@ export const localRouter = {
           "Sitedeki Benzer Ürün": top?.name ?? "",
           "Benzer SKU": top?.sku ?? "",
           "Benzerlik %": top?.score ?? "",
+          "Benzer Ürün Linki": top ? (urlBySlug.get(top.slug) ?? "") : "",
           "Excel Satırı": r.i + 2,
+          "Sitede Ara": searchUrl(r.code || r.code2 || r.name),
         });
       }
+      review.sort((a, b) => Number(b["Benzerlik %"] || 0) - Number(a["Benzerlik %"] || 0));
+
+      const linkify = (ws: XLSX.WorkSheet, rows: Record<string, string | number>[], keys: string[]) => {
+        const ref = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
+        const head = keys.map((k) => Object.keys(rows[0] ?? {}).indexOf(k));
+        for (let i = 0; i < rows.length; i++) {
+          for (const c of head) {
+            if (c < 0) continue;
+            const addr = XLSX.utils.encode_cell({ r: i + 1, c });
+            const cell = ws[addr] as XLSX.CellObject | undefined;
+            if (cell && typeof cell.v === "string" && cell.v.startsWith("http")) {
+              cell.l = { Target: cell.v, Tooltip: "Sitede aç" };
+              cell.v = "Kontrol et";
+            }
+          }
+        }
+        ws["!ref"] = XLSX.utils.encode_range(ref);
+      };
+
+      const missCols = [
+        { wch: 30 },
+        { wch: 26 },
+        { wch: 55 },
+        { wch: 10 },
+        { wch: 14 },
+        { wch: 12 },
+        { wch: 14 },
+      ];
 
       const wb = XLSX.utils.book_new();
-      const wsMissing = XLSX.utils.json_to_sheet(missing);
-      wsMissing["!cols"] = [{ wch: 30 }, { wch: 26 }, { wch: 55 }, { wch: 10 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, wsMissing, "Sitede Yok");
+      const wsMissing = XLSX.utils.json_to_sheet(inStock);
+      wsMissing["!cols"] = missCols;
+      wsMissing["!autofilter"] = { ref: wsMissing["!ref"] ?? "A1" };
+      linkify(wsMissing, inStock, ["Sitede Ara"]);
+      XLSX.utils.book_append_sheet(wb, wsMissing, "Eklenecek (Stoklu)");
 
       const wsReview = XLSX.utils.json_to_sheet(review);
       wsReview["!cols"] = [
@@ -354,15 +411,26 @@ export const localRouter = {
         { wch: 48 },
         { wch: 26 },
         { wch: 12 },
+        { wch: 16 },
         { wch: 12 },
+        { wch: 14 },
       ];
+      wsReview["!autofilter"] = { ref: wsReview["!ref"] ?? "A1" };
+      linkify(wsReview, review, ["Benzer Ürün Linki", "Sitede Ara"]);
       XLSX.utils.book_append_sheet(wb, wsReview, "Emin Olunamayan");
+
+      const wsZero = XLSX.utils.json_to_sheet(zeroStock);
+      wsZero["!cols"] = missCols;
+      wsZero["!autofilter"] = { ref: wsZero["!ref"] ?? "A1" };
+      linkify(wsZero, zeroStock, ["Sitede Ara"]);
+      XLSX.utils.book_append_sheet(wb, wsZero, "Stoksuz (Atlanacak)");
 
       const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
       const safe = batch.filename.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "_");
       return {
-        missingCount: missing.length,
+        missingCount: inStock.length,
         reviewCount: review.length,
+        zeroCount: zeroStock.length,
         xlsxBase64: XLSX.write(wb, { type: "base64", bookType: "xlsx" }) as string,
         filename: `sitede-olmayan-urunler_${safe}_${stamp}`,
       };

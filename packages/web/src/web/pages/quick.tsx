@@ -97,7 +97,11 @@ export default function QuickPage() {
   const [drag, setDrag] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<{ rowCount: number; filename: string } | null>(null);
-  const [missing, setMissing] = useState<{ missingCount: number; reviewCount: number } | null>(null);
+  const [missing, setMissing] = useState<{
+    missingCount: number;
+    reviewCount: number;
+    zeroCount: number;
+  } | null>(null);
 
   const mapping = active.data?.mapping;
   const columnsOk = Boolean(mapping?.code && mapping?.stock);
@@ -127,7 +131,11 @@ export default function QuickPage() {
   async function generateMissing() {
     if (batchId === null) return;
     const res = await expMissing.mutateAsync({ batchId });
-    setMissing({ missingCount: res.missingCount, reviewCount: res.reviewCount });
+    setMissing({
+      missingCount: res.missingCount,
+      reviewCount: res.reviewCount,
+      zeroCount: res.zeroCount,
+    });
     download(`${res.filename}.xlsx`, b64ToBlob(res.xlsxBase64));
   }
 
@@ -388,9 +396,11 @@ export default function QuickPage() {
                 <CheckCircle2 size={14} /> İndirildi
               </p>
               <p className="mt-1 text-[12.5px] leading-relaxed text-idle">
-                <b>Sitede Yok</b> sayfası: {missing.missingCount} ürün — siteye eklenecek olanlar.{" "}
-                <b>Emin Olunamayan</b> sayfası: {missing.reviewCount} ürün — eklemeden önce
-                "Sitedeki Benzer Ürün" kolonuna bak, bazıları aslında sitede kayıtlı olabilir.
+                <b>Eklenecek (Stoklu)</b>: {missing.missingCount} ürün — stoğu olan ve sitede hiç
+                bulunmayanlar, doğrudan eklenecek liste. <b>Emin Olunamayan</b>:{" "}
+                {missing.reviewCount} ürün — eklemeden önce "Sitedeki Benzer Ürün" kolonuna bak.{" "}
+                <b>Stoksuz (Atlanacak)</b>: {missing.zeroCount} ürün — stoğu 0, eklemene gerek yok.
+                Her satırdaki "Kontrol et" linkine tıklayarak sitede aratabilirsin.
               </p>
             </div>
           )}
