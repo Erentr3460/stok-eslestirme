@@ -57,7 +57,7 @@ jobs:
 
       - name: Siteyi derle
         env:
-          PAGES_DOMAIN: stok.erencetin.tr
+          PAGES_DOMAIN: stok.erencetin.net.tr
         run: ./scripts/build-pages.sh
 
       - name: main dalına yayınla
@@ -66,6 +66,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./packages/web/dist
           publish_branch: main
-          cname: stok.erencetin.tr
+          cname: stok.erencetin.net.tr
           enable_jekyll: false
           commit_message: "yayın: katalog tazelendi"
